@@ -1,31 +1,198 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Ginatilan water supply simulation</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<link rel="stylesheet" href="style.css"></head><body><div id="map"></div>
-<div class="card">
- <h1>Ginatilan water supply</h1>
- <div class="clock"><span id="clk">05:00</span><small id="day">Day 1</small></div>
- <div class="row"><span class="lbl">Supply (springs)</span><b id="tsup">-</b></div>
- <div class="row"><span class="lbl">Demand now</span><b id="tdem">-</b></div>
- <div class="row"><span class="lbl">Barangays dry</span><b id="tdry">0</b></div>
- <div class="sl"><span class="lbl">Spring yield: </span><b id="dv">100%</b>
-  <input id="dr" type="range" min="0" max="130" value="100" step="5"></div>
- <div class="leg">
-  <span><i style="background:#2e9e5b"></i>tank &gt; 50%</span><span><i style="background:#e6c229"></i>20-50%</span>
-  <span><i style="background:#f18f01"></i>&lt; 20%</span><span><i style="background:#d7263d"></i>dry</span></div>
- <div class="lbl" style="font-size:11px">Ghost column = demand now. Solid column = supply arriving. Colour = tank level.</div>
- <div id="log"></div>
- <div class="hint">Click a blue spring to cut it off / restore it.</div>
-</div>
-<div id="st"></div>
-<div class="bar">
-<button id="play" class="on">Pause</button><span></span>
-<button class="spd" data-s="15">x1</button><button class="spd on" data-s="60">x4</button><button class="spd" data-s="240">x16</button><span></span>
-<button id="tm">Tilt &minus;</button><button id="tp">Tilt +</button><span></span>
-<button id="town">Town</button><button id="orb">Orbit</button><button id="sat">Satellite</button><button id="rst">Reset</button></div>
-<script src="app.js"></script></body></html>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#edf5f5">
+  <title>Ginatilan Water Supply Simulation</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+</head>
+<body class="weather-sunny">
+  <div id="map" aria-label="Interactive simulated water supply map"></div>
+  <div id="weather-effects" aria-hidden="true"></div>
+
+  <main class="dashboard" aria-label="Water supply simulation dashboard">
+    <header class="dashboard-header">
+      <div class="dashboard-title">
+        <div>
+          <p class="eyebrow">GINATILAN · CEBU</p>
+          <h1>Water supply</h1>
+        </div>
+        <button id="dashboard-toggle" class="dashboard-toggle" type="button" aria-label="Minimize water supply panel" aria-expanded="true" title="Minimize panel">−</button>
+      </div>
+      <div class="clock-wrap">
+        <span class="clock" id="clk">05:00</span>
+        <span class="day" id="day">Day 1</span>
+      </div>
+    </header>
+    <div id="dashboard-content" class="dashboard-content">
+      <p class="simulation-note"><strong>EDUCATIONAL SIMULATION</strong> · All readings are simulated. Pipeline routes and tank locations are illustrative estimates, not surveyed municipal infrastructure.</p>
+
+      <section class="metric-grid" aria-label="Live system dashboard">
+        <article class="metric"><span>Water supply</span><strong id="tsup">—</strong><small>delivered · L/min</small></article>
+        <article class="metric"><span>Water demand</span><strong id="tdem">—</strong><small>current · L/min</small></article>
+        <article class="metric"><span>Consumption</span><strong id="tcons">—</strong><small>total · L</small></article>
+        <article class="metric"><span>Avg. pressure</span><strong id="tpressure">—</strong><small>system · PSI</small></article>
+        <article class="metric"><span>Active pipelines</span><strong id="tactive">—</strong><small id="tpipe-total">of — routes</small></article>
+        <article class="metric"><span>Operational springs</span><strong id="tsprings">—</strong><small id="tspring-total">of — sources</small></article>
+        <article class="metric"><span>Water shortages</span><strong id="tdry">0</strong><small>barangays</small></article>
+        <article class="metric weather-metric"><span>Current weather</span><strong id="weather-label">Sunny</strong><small id="weather-impact">Spring recharge baseline</small></article>
+      </section>
+
+      <section class="control-section" aria-labelledby="supply-controls-title">
+        <div class="section-title"><h2 id="supply-controls-title">Supply controls</h2><span class="live-dot">LIVE</span></div>
+        <label class="field-label" for="weather">Weather condition</label>
+        <select id="weather">
+          <option value="sunny">Sunny</option>
+          <option value="cloudy">Cloudy</option>
+          <option value="rainy">Rainy</option>
+          <option value="heavy-rain">Heavy Rain</option>
+          <option value="storm">Storm</option>
+        </select>
+
+        <label class="range-label" for="weather-intensity"><span>Weather intensity</span><strong id="intensity-value">50%</strong></label>
+        <input id="weather-intensity" type="range" min="0" max="100" value="50" step="1">
+
+        <label class="range-label" for="dr"><span>Spring yield adjustment</span><strong id="dv">100%</strong></label>
+        <input id="dr" type="range" min="0" max="130" value="100" step="5">
+
+        <label class="range-label" for="flow"><span>Water flow rate</span><strong id="flow-value">1,200 L/min</strong></label>
+        <input id="flow" type="range" min="200" max="2000" value="1200" step="50">
+
+        <label class="range-label" for="pressure"><span>Water pressure</span><strong id="pressure-value">60 PSI</strong></label>
+        <input id="pressure" type="range" min="0" max="100" value="60" step="1">
+        <p class="control-hint">The flow setting and pressure adjust delivery; a simulated 2,000 L/min system cap applies.</p>
+      </section>
+
+      <section class="system-summary" aria-label="Additional live totals">
+        <div><span>Available water</span><strong id="available">— L</strong></div>
+        <div><span>Total supplied</span><strong id="supplied-total">0 L</strong></div>
+        <div><span>Total demand</span><strong id="demand-total">0 L</strong></div>
+      </section>
+
+      <section class="legend">
+        <span><i class="swatch tank-good"></i>Tank &gt; 50%</span>
+        <span><i class="swatch tank-mid"></i>20–50%</span>
+        <span><i class="swatch tank-low"></i>&lt; 20%</span>
+        <span><i class="swatch pipe-swatch"></i>Simulated pipeline</span>
+      </section>
+      <div id="log" class="event-log" aria-live="polite"></div>
+      <p class="map-hint">Click a spring to toggle its source · Click a barangay for its simulated water meter · Click a tank or route to inspect.</p>
+    </div>
+  </main>
+
+  <aside class="pipeline-panel" aria-label="Pipeline management">
+    <div class="section-title"><div><p class="eyebrow">NETWORK CONTROL</p><h2>Pipeline manager</h2></div><span class="route-count" id="route-count">— routes</span></div>
+    <p class="panel-disclaimer">Illustrative estimated routes only; not actual surveyed infrastructure. Manual routes are saved in this browser.</p>
+    <label class="field-label" for="pipe-select">Select a route</label>
+    <select id="pipe-select"></select>
+    <div class="route-detail">
+      <span class="status-chip" id="pipeline-status">Active</span>
+      <strong id="pipe-name">Select a route</strong>
+      <span id="pipe-flow">Flow: — L/min</span>
+      <span id="pipe-type">Route type: —</span>
+    </div>
+    <dl class="pipeline-info">
+      <div><dt>Pipeline ID</dt><dd id="pipe-id">—</dd></div>
+      <div><dt>Starting point</dt><dd id="pipe-start">—</dd></div>
+      <div><dt>Destination</dt><dd id="pipe-destination">—</dd></div>
+      <div><dt>Estimated length</dt><dd id="pipe-length">—</dd></div>
+      <div><dt>Pressure</dt><dd id="pipe-pressure">—</dd></div>
+      <div><dt>Connected source</dt><dd id="pipe-source">—</dd></div>
+      <div><dt>Connected barangay</dt><dd id="pipe-barangay">—</dd></div>
+    </dl>
+    <div class="route-actions">
+      <button id="pipe-toggle" type="button">Close pipeline</button>
+      <button id="pipe-block" type="button" class="secondary-button">Simulate blockage</button>
+    </div>
+    <section class="manual-tools" aria-labelledby="manual-tools-heading">
+      <h3 id="manual-tools-heading">Manual pipeline tools</h3>
+      <label class="field-label" for="manual-name">New pipeline name</label>
+      <input id="manual-name" type="text" maxlength="60" value="New water pipeline">
+      <div class="connection-fields">
+        <label><span>Connect source</span><select id="manual-source"></select></label>
+        <label><span>Connect barangay</span><select id="manual-barangay"></select></label>
+      </div>
+      <div class="pipeline-actions" role="toolbar" aria-label="Pipeline actions">
+        <button id="add-pipeline" type="button"><span aria-hidden="true">+</span> Add Pipeline</button>
+        <button id="undo-pipeline" type="button" class="secondary-button" disabled aria-label="Undo last pipeline action"><span aria-hidden="true">↶</span> Undo</button>
+        <button id="redo-pipeline" type="button" class="secondary-button" disabled aria-label="Redo pipeline action"><span aria-hidden="true">↷</span> Redo</button>
+        <button id="delete-pipeline" type="button" class="danger-button" disabled aria-label="Delete selected pipeline"><span aria-hidden="true">×</span> Delete</button>
+      </div>
+      <div class="tool-grid">
+        <button id="finish-drawing" type="button" disabled>Finish Pipeline</button>
+        <button id="cancel-drawing" type="button" class="secondary-button" disabled>Cancel</button>
+        <button id="edit-pipeline" type="button" disabled>Edit Pipeline</button>
+        <button id="add-route-point" type="button" class="secondary-button" disabled>Add route point</button>
+        <button id="remove-route-point" type="button" class="secondary-button" disabled>Remove selected point</button>
+        <button id="save-edit" type="button" disabled>Save edit</button>
+        <button id="cancel-edit" type="button" class="secondary-button" disabled>Cancel edit</button>
+        <button id="toggle-pipelines" type="button" class="secondary-button">Hide Pipelines</button>
+      </div>
+      <p id="drawing-help" class="control-hint">Add Pipeline, then click map points. Double-click or Finish Drawing to save. Routes persist in this browser.</p>
+      <div class="connection-fields edit-fields">
+        <label><span>Edit name</span><input id="edit-pipe-name" type="text" maxlength="60"></label>
+        <label><span>Color</span><input id="edit-pipe-color" type="color" value="#168ce0"></label>
+        <label><span>Status</span>
+          <select id="edit-pipe-status">
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+            <option value="Blocked">Blocked</option>
+          </select>
+        </label>
+        <button id="apply-pipe-properties" type="button" class="secondary-button" disabled>Apply properties</button>
+      </div>
+    </section>
+    <p class="control-hint">You can also select a route by clicking its blue line on the map.</p>
+  </aside>
+
+  <div id="st" role="status"></div>
+  <nav class="bar" aria-label="Simulation and map controls">
+    <button id="play" class="on" type="button">Pause</button><span></span>
+    <div class="speed-control" role="group" aria-label="Simulation speed">
+      <button id="speed-down" type="button" aria-label="Decrease simulation speed">−</button>
+      <span class="speed-readout">Speed: <strong id="speed-value">4x</strong></span>
+      <button id="speed-up" type="button" aria-label="Increase simulation speed">+</button>
+    </div><span></span>
+    <button id="tm" type="button">Tilt −</button>
+    <button id="tp" type="button">Tilt +</button><span></span>
+    <button id="town" type="button">Town</button>
+    <button id="orb" type="button">Orbit</button>
+    <label class="style-control">Map style
+      <select id="map-style" aria-label="Map style">
+        <option value="street">OpenStreetMap / Street Map</option>
+        <option value="satellite">Satellite</option>
+        <option value="satellite-labels">Satellite with Labels</option>
+        <option value="terrain">Terrain</option>
+        <option value="dark">Dark Map</option>
+        <option value="light">Light Map</option>
+      </select>
+    </label>
+    <button id="sat" type="button">Satellite</button>
+    <button id="rst" type="button">Reset simulation</button>
+    <button id="map-only-toggle" type="button" aria-label="Enter map-only mode">Map Only</button>
+  </nav>
+
+  <div id="map-only-toolbar" role="toolbar" aria-label="Map-only controls" aria-hidden="true">
+    <button id="exit-map-only" type="button">Exit Map Only</button>
+    <label class="map-only-style-control">Map style
+      <select id="map-only-style" aria-label="Map style">
+        <option value="street">OpenStreetMap / Street Map</option>
+        <option value="satellite">Satellite</option>
+        <option value="satellite-labels">Satellite with Labels</option>
+        <option value="terrain">Terrain</option>
+        <option value="dark">Dark Map</option>
+        <option value="light">Light Map</option>
+      </select>
+    </label>
+    <button id="map-only-zoom-in" type="button" aria-label="Zoom in">+</button>
+    <button id="map-only-zoom-out" type="button" aria-label="Zoom out">−</button>
+    <button id="map-only-reset" type="button">Reset Map View</button>
+    <button id="map-only-pipelines" type="button" aria-pressed="true">Hide Pipelines</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
