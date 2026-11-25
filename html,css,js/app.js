@@ -162,7 +162,7 @@ B.forEach(barangay => {
     const pipeline = {
       id: "spring-" + PIPES.length, name, initialName: name,
       kind: "Spring → tank", spring, barangay, path: spring.path, initialPath: spring.path.map(point => point.slice()),
-      enabled: true, blocked: false, deleted: false, color: "#168ce0", flowLpm: 0
+      enabled: true, blocked: false, deleted: false, color: "#168ce0", flowLpm: 0, animationSpeed: 1
     };
     spring.pipe = pipeline;
     PIPES.push(pipeline);
@@ -172,7 +172,7 @@ B.forEach(barangay => {
     initialName: barangay.name + " tank → " + barangay.name,
     kind: "Tank → barangay", spring: null, barangay, path: barangay.outletPath,
     initialPath: barangay.outletPath.map(point => point.slice()),
-    enabled: true, blocked: false, deleted: false, color: "#168ce0", flowLpm: 0
+    enabled: true, blocked: false, deleted: false, color: "#168ce0", flowLpm: 0, animationSpeed: 1
   };
   barangay.outletPipe = outlet;
   PIPES.push(outlet);
@@ -216,6 +216,16 @@ let boundaryGeoJSON = null;
 let pipelineOptionsSignature = "";
 let overlayLayersReady = false;
 let editorPipelineId = null;
+let pipelineSpeedEditState = null;
+let pipelineSettingsPopup = null;
+let pendingPipelineSettings = false;
+
+const MIN_PIPELINE_ANIMATION_SPEED = 0.25;
+const MAX_PIPELINE_ANIMATION_SPEED = 3;
+function normalizePipelineAnimationSpeed(value) {
+  const speedValue = Number(value);
+  return clamp(Number.isFinite(speedValue) ? speedValue : 1, MIN_PIPELINE_ANIMATION_SPEED, MAX_PIPELINE_ANIMATION_SPEED);
+}
 
 function allPipelines() {
   return PIPES.filter(pipeline => !pipeline.deleted).concat(MANUAL_PIPES);
@@ -231,6 +241,7 @@ function persistManualPipelines() {
     color: pipeline.color,
     enabled: pipeline.enabled,
     blocked: pipeline.blocked,
+    animationSpeed: pipeline.animationSpeed,
     sourceId: pipeline.spring.id,
     barangay: pipeline.barangay.name
   }));
@@ -244,7 +255,7 @@ function persistAutoPipelineEdits() {
   const saved = PIPES.filter(pipeline =>
     pipeline.deleted || pipeline.name !== pipeline.initialName ||
     JSON.stringify(pipeline.path) !== JSON.stringify(pipeline.initialPath) ||
-    pipeline.color !== "#168ce0" || !pipeline.enabled || pipeline.blocked
+    pipeline.color !== "#168ce0" || !pipeline.enabled || pipeline.blocked || pipeline.animationSpeed !== 1
   ).map(pipeline => ({
     id: pipeline.id,
     name: pipeline.name,
@@ -252,7 +263,8 @@ function persistAutoPipelineEdits() {
     color: pipeline.color,
     enabled: pipeline.enabled,
     blocked: pipeline.blocked,
-    deleted: pipeline.deleted
+    deleted: pipeline.deleted,
+    animationSpeed: pipeline.animationSpeed
   }));
   try {
     if (saved.length) localStorage.setItem(AUTO_PIPE_STORAGE_KEY, JSON.stringify(saved));
@@ -286,6 +298,7 @@ function restoreAutoPipelineEdits() {
       pipeline.enabled = Boolean(record.enabled);
       pipeline.blocked = Boolean(record.blocked);
       pipeline.deleted = Boolean(record.deleted);
+      pipeline.animationSpeed = normalizePipelineAnimationSpeed(record.animationSpeed);
     });
   } catch (error) {
     showError("Saved generated pipeline changes couldn't be loaded: " + error.message);
@@ -314,7 +327,8 @@ function restoreManualPipelines() {
       const pipeline = {
         id: String(record.id), name: String(record.name), kind: "Manual route", manual: true,
         spring, barangay, path: record.path.map(point => point.slice()), color: record.color,
-        enabled: Boolean(record.enabled), blocked: Boolean(record.blocked), flowLpm: 0
+        enabled: Boolean(record.enabled), blocked: Boolean(record.blocked), flowLpm: 0,
+        animationSpeed: normalizePipelineAnimationSpeed(record.animationSpeed)
       };
       MANUAL_PIPES.push(pipeline);
       const match = pipeline.id.match(/^USR-(\d+)$/);
@@ -337,6 +351,7 @@ function capturePipelineState() {
     color: pipeline.color,
     enabled: pipeline.enabled,
     blocked: pipeline.blocked,
+    animationSpeed: normalizePipelineAnimationSpeed(pipeline.animationSpeed),
     deleted: Boolean(pipeline.deleted)
   });
   return {
@@ -377,6 +392,7 @@ function restorePipelineState(state) {
     pipeline.color = saved.color;
     pipeline.enabled = saved.enabled;
     pipeline.blocked = saved.blocked;
+    pipeline.animationSpeed = normalizePipelineAnimationSpeed(saved.animationSpeed);
     pipeline.deleted = saved.deleted;
   });
   const restoredManual = state.manual.map(saved => {
@@ -396,7 +412,8 @@ function restorePipelineState(state) {
       color: saved.color,
       enabled: saved.enabled,
       blocked: saved.blocked,
-      flowLpm: 0
+      flowLpm: 0,
+      animationSpeed: normalizePipelineAnimationSpeed(saved.animationSpeed)
     };
   });
   MANUAL_PIPES.splice(0, MANUAL_PIPES.length, ...restoredManual);
@@ -407,6 +424,7 @@ function restorePipelineState(state) {
   persistAutoPipelineEdits();
   persistManualPipelines();
   refresh();
+  refreshPipelineSettingsPopup();
 }
 function undoPipelineChange() {
   if (drawingMode || editingPipeline || undoHistory.length === 0) return;
@@ -584,8 +602,9 @@ function dropsData() {
   allPipelines().forEach(pipeline => {
     if (!routeCanFlow(pipeline) || pipeline.flowLpm <= 0) return;
     const count = clamp(Math.round(pipeline.flowLpm / 55), 1, 6);
+    const animationSpeed = normalizePipelineAnimationSpeed(pipeline.animationSpeed);
     for (let i = 0; i < count; i++) {
-      const t = ((i / count) + flowClock * 0.12) % 1;
+      const t = ((i / count) + flowClock * 0.12 * animationSpeed) % 1;
       features.push({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: along(pipeline.path, t) } });
     }
   });
@@ -802,20 +821,59 @@ function makeArrowImage() {
   return context.getImageData(0, 0, 32, 32);
 }
 
+function pipelineSettingsHtml(pipeline) {
+  const animationSpeed = normalizePipelineAnimationSpeed(pipeline.animationSpeed);
+  const routeOrigin = pipeline.manual ? "Manually drawn estimated route." : "Automatically generated estimated route.";
+  return "<section class=\"pipeline-settings-panel collapsible-panel\" aria-label=\"Selected pipeline settings\">" +
+    "<header class=\"panel-header\">" +
+      "<div class=\"panel-heading\"><p class=\"eyebrow\">SELECTED ROUTE</p><h2>Pipeline settings</h2></div>" +
+      "<button class=\"panel-toggle\" type=\"button\" aria-label=\"Minimize Pipeline settings\" aria-controls=\"pipeline-settings-content\" aria-expanded=\"true\" title=\"Minimize Pipeline settings\" data-panel-title=\"Pipeline settings\">⌃</button>" +
+    "</header>" +
+    "<div id=\"pipeline-settings-content\" class=\"panel-content\">" +
+      "<div class=\"pipeline-settings-summary\">" +
+        "<strong>" + escapeHtml(pipeline.name) + "</strong>" +
+        "<span>Pipeline ID: " + escapeHtml(pipeline.id) + "</span>" +
+        "<span>Status: " + escapeHtml(routeStatus(pipeline)) + " · Flow: " + fmt(pipeline.flowLpm) + " L/min</span>" +
+      "</div>" +
+      "<label class=\"range-label\" for=\"pipeline-animation-speed\"><span>Particle speed</span><output class=\"pipeline-speed-value\">" + Math.round(animationSpeed * 100) + "%</output></label>" +
+      "<input id=\"pipeline-animation-speed\" class=\"pipeline-animation-speed\" type=\"range\" min=\"25\" max=\"300\" step=\"25\" value=\"" + Math.round(animationSpeed * 100) + "\" data-pipeline-id=\"" + escapeHtml(pipeline.id) + "\" aria-label=\"Water particle speed for " + escapeHtml(pipeline.name) + "\">" +
+      "<p class=\"control-hint\">Adjusts the visual water-particle speed for this route; it does not change simulated flow volume.</p>" +
+      "<p class=\"control-hint\">" + routeOrigin + " Not surveyed infrastructure.</p>" +
+    "</div>" +
+  "</section>";
+}
+
+function refreshPipelineSettingsPopup() {
+  const pipeline = selectedPipeline();
+  if (!pipelineSettingsPopup || !pipelineSettingsPopup.isOpen() || !pipeline) return;
+  pipelineSettingsPopup
+    .setLngLat(along(pipeline.path, 0.5))
+    .setHTML(pipelineSettingsHtml(pipeline));
+}
+
 function selectPipeline(index, showPopup) {
   selectedPipeIndex = clamp(index, 0, allPipelines().length - 1);
   refresh();
-  if (showPopup && mapReady) {
-    const pipeline = selectedPipeline();
-    const midpoint = along(pipeline.path, 0.5);
-    new maplibregl.Popup({ offset: 10 })
-      .setLngLat(midpoint)
-      .setHTML("<strong>" + escapeHtml(pipeline.name) + "</strong><br>Status: " + routeStatus(pipeline) +
-        "<br>Flow: " + fmt(pipeline.flowLpm) + " L/min<br>" +
-        (pipeline.manual ? "Manually drawn estimated route." : "Automatically generated estimated route.") +
-        " Not surveyed infrastructure.")
-      .addTo(map);
+  if (showPopup) {
+    if (mapReady) showPipelineSettingsPopup();
+    else pendingPipelineSettings = true;
   }
+}
+
+function showPipelineSettingsPopup() {
+  const pipeline = selectedPipeline();
+  if (!pipeline || !mapReady) return;
+  const midpoint = along(pipeline.path, 0.5);
+  if (pipelineSettingsPopup) pipelineSettingsPopup.remove();
+  pipelineSettingsPopup = new maplibregl.Popup({
+    offset: 10,
+    maxWidth: window.innerWidth <= 620 ? "276px" : "320px",
+    className: "pipeline-settings-popup",
+    closeButton: false
+  })
+    .setLngLat(midpoint)
+    .setHTML(pipelineSettingsHtml(pipeline))
+    .addTo(map);
 }
 
 function addBoundaryLayer() {
@@ -924,6 +982,10 @@ map.on("load", () => {
   B.forEach(addMapMarkers);
   loadMunicipalBoundary();
   refresh();
+  if (pendingPipelineSettings) {
+    pendingPipelineSettings = false;
+    showPipelineSettingsPopup();
+  }
   requestAnimationFrame(frame);
 });
 map.on("style.load", () => {
@@ -933,6 +995,8 @@ map.on("style.load", () => {
   refresh();
 });
 map.on("click", event => {
+  if (event.originalEvent.target instanceof Element &&
+      event.originalEvent.target.closest(".pipeline-settings-popup")) return;
   if (drawingMode) {
     addDrawingPoint([event.lngLat.lng, event.lngLat.lat]);
     return;
@@ -1044,7 +1108,7 @@ function finishDrawing() {
     id: "USR-" + String(manualIdSequence++).padStart(4, "0"),
     name, kind: "Manual route", manual: true, spring, barangay,
     path: drawingPoints.map(point => point.slice()), enabled: true, blocked: false,
-    color: "#168ce0", flowLpm: 0
+    color: "#168ce0", flowLpm: 0, animationSpeed: 1
   };
   MANUAL_PIPES.push(pipeline);
   commitPipelineChange(previousState);
@@ -1381,15 +1445,40 @@ $("play").addEventListener("click", () => {
   $("play").textContent = playing ? "Pause" : "Play";
   $("play").classList.toggle("on", playing);
 });
-$("dashboard-toggle").addEventListener("click", event => {
-  const minimized = document.querySelector(".dashboard").classList.toggle("is-minimized");
-  const button = event.currentTarget;
-  button.textContent = minimized ? "+" : "−";
-  button.setAttribute("aria-label", minimized ? "Expand water supply panel" : "Minimize water supply panel");
+document.addEventListener("click", event => {
+  const button = event.target.closest(".panel-toggle");
+  if (!button) return;
+  const panel = button.closest(".collapsible-panel");
+  const content = $(button.getAttribute("aria-controls"));
+  const minimized = panel.classList.toggle("is-minimized");
+  const title = button.dataset.panelTitle;
+  button.textContent = minimized ? "⌄" : "⌃";
+  button.setAttribute("aria-label", `${minimized ? "Expand" : "Minimize"} ${title}`);
   button.setAttribute("aria-expanded", String(!minimized));
-  button.title = minimized ? "Expand panel" : "Minimize panel";
-  $("dashboard-content").inert = minimized;
-  $("dashboard-content").setAttribute("aria-hidden", String(minimized));
+  button.title = `${minimized ? "Expand" : "Minimize"} ${title}`;
+  content.inert = minimized;
+  content.setAttribute("aria-hidden", String(minimized));
+});
+document.addEventListener("input", event => {
+  const input = event.target.closest(".pipeline-animation-speed");
+  if (!input) return;
+  const pipeline = allPipelines().find(item => item.id === input.dataset.pipelineId);
+  if (!pipeline) return;
+  if (!pipelineSpeedEditState) pipelineSpeedEditState = capturePipelineState();
+  pipeline.animationSpeed = normalizePipelineAnimationSpeed(Number(input.value) / 100);
+  input.closest(".panel-content").querySelector(".pipeline-speed-value").textContent =
+    Math.round(pipeline.animationSpeed * 100) + "%";
+});
+document.addEventListener("change", event => {
+  const input = event.target.closest(".pipeline-animation-speed");
+  if (!input || !pipelineSpeedEditState) return;
+  const pipeline = allPipelines().find(item => item.id === input.dataset.pipelineId);
+  const previousState = pipelineSpeedEditState;
+  pipelineSpeedEditState = null;
+  if (!pipeline) return;
+  commitPipelineChange(previousState);
+  if (pipeline.manual) persistManualPipelines();
+  else persistAutoPipelineEdits();
 });
 $("weather").addEventListener("change", event => {
   weather = event.target.value;
@@ -1419,7 +1508,7 @@ $("pressure").addEventListener("input", event => {
 });
 $("undo-pipeline").addEventListener("click", undoPipelineChange);
 $("redo-pipeline").addEventListener("click", redoPipelineChange);
-$("pipe-select").addEventListener("change", event => selectPipeline(Number(event.target.value), false));
+$("pipe-select").addEventListener("change", event => selectPipeline(Number(event.target.value), true));
 $("pipe-toggle").addEventListener("click", () => {
   const pipeline = selectedPipeline();
   const previousState = capturePipelineState();

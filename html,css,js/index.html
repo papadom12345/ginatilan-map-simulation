@@ -13,21 +13,21 @@
   <div id="map" aria-label="Interactive simulated water supply map"></div>
   <div id="weather-effects" aria-hidden="true"></div>
 
-  <main class="dashboard" aria-label="Water supply simulation dashboard">
-    <header class="dashboard-header">
-      <div class="dashboard-title">
-        <div>
-          <p class="eyebrow">GINATILAN · CEBU</p>
-          <h1>Water supply</h1>
-        </div>
-        <button id="dashboard-toggle" class="dashboard-toggle" type="button" aria-label="Minimize water supply panel" aria-expanded="true" title="Minimize panel">−</button>
+  <main class="dashboard collapsible-panel" aria-label="Water supply simulation dashboard">
+    <header class="panel-header">
+      <div class="panel-heading">
+        <p class="eyebrow">GINATILAN · CEBU</p>
+        <h1>Water supply</h1>
       </div>
-      <div class="clock-wrap">
-        <span class="clock" id="clk">05:00</span>
-        <span class="day" id="day">Day 1</span>
-      </div>
+      <button id="dashboard-toggle" class="panel-toggle" type="button" aria-label="Minimize Water supply panel" aria-controls="dashboard-content" aria-expanded="true" title="Minimize Water supply panel" data-panel-title="Water supply">⌃</button>
     </header>
-    <div id="dashboard-content" class="dashboard-content">
+    <div id="dashboard-content" class="panel-content">
+      <div class="panel-meta dashboard-meta">
+        <div class="clock-wrap">
+          <span class="clock" id="clk">05:00</span>
+          <span class="day" id="day">Day 1</span>
+        </div>
+      </div>
       <p class="simulation-note"><strong>EDUCATIONAL SIMULATION</strong> · All readings are simulated. Pipeline routes and tank locations are illustrative estimates, not surveyed municipal infrastructure.</p>
 
       <section class="metric-grid" aria-label="Live system dashboard">
@@ -83,8 +83,18 @@
     </div>
   </main>
 
-  <aside class="pipeline-panel" aria-label="Pipeline management">
-    <div class="section-title"><div><p class="eyebrow">NETWORK CONTROL</p><h2>Pipeline manager</h2></div><span class="route-count" id="route-count">— routes</span></div>
+  <aside class="pipeline-panel collapsible-panel" aria-label="Pipeline management">
+    <header class="panel-header">
+      <div class="panel-heading">
+        <p class="eyebrow">NETWORK CONTROL</p>
+        <h2>Pipeline manager</h2>
+      </div>
+      <button id="pipeline-panel-toggle" class="panel-toggle" type="button" aria-label="Minimize Pipe Manager" aria-controls="pipeline-panel-content" aria-expanded="true" title="Minimize Pipe Manager" data-panel-title="Pipe Manager">⌃</button>
+    </header>
+    <div id="pipeline-panel-content" class="panel-content">
+    <div class="panel-meta pipeline-meta">
+      <span class="route-count" id="route-count">— routes</span>
+    </div>
     <p class="panel-disclaimer">Illustrative estimated routes only; not actual surveyed infrastructure. Manual routes are saved in this browser.</p>
     <label class="field-label" for="pipe-select">Select a route</label>
     <select id="pipe-select"></select>
@@ -146,6 +156,7 @@
       </div>
     </section>
     <p class="control-hint">You can also select a route by clicking its blue line on the map.</p>
+    </div>
   </aside>
 
   <div id="st" role="status"></div>
