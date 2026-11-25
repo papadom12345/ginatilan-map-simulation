@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ginatilan water supply simulation</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="style.css"></head><body><div id="map"></div>
+<div class="card">
+ <h1>Ginatilan water supply</h1>
+ <div class="clock"><span id="clk">05:00</span><small id="day">Day 1</small></div>
+ <div class="row"><span class="lbl">Supply (springs)</span><b id="tsup">-</b></div>
+ <div class="row"><span class="lbl">Demand now</span><b id="tdem">-</b></div>
+ <div class="row"><span class="lbl">Barangays dry</span><b id="tdry">0</b></div>
+ <div class="sl"><span class="lbl">Spring yield: </span><b id="dv">100%</b>
+  <input id="dr" type="range" min="0" max="130" value="100" step="5"></div>
+ <div class="leg">
+  <span><i style="background:#2e9e5b"></i>tank &gt; 50%</span><span><i style="background:#e6c229"></i>20-50%</span>
+  <span><i style="background:#f18f01"></i>&lt; 20%</span><span><i style="background:#d7263d"></i>dry</span></div>
+ <div class="lbl" style="font-size:11px">Ghost column = demand now. Solid column = supply arriving. Colour = tank level.</div>
+ <div id="log"></div>
+ <div class="hint">Click a blue spring to cut it off / restore it.</div>
+</div>
+<div id="st"></div>
+<div class="bar">
+<button id="play" class="on">Pause</button><span></span>
+<button class="spd" data-s="15">x1</button><button class="spd on" data-s="60">x4</button><button class="spd" data-s="240">x16</button><span></span>
+<button id="tm">Tilt &minus;</button><button id="tp">Tilt +</button><span></span>
+<button id="town">Town</button><button id="orb">Orbit</button><button id="sat">Satellite</button><button id="rst">Reset</button></div>
+<script src="app.js"></script></body></html>
